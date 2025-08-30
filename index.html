@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="c" width="4096" height="2048"></canvas>
+<script>
+    const canvas = document.getElementById("c");
+    const ctx = canvas.getContext("2d");
+    const ws = new WebSocket("ws://localhost:8080");
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = () => {
+        console.log("Connected to server");
+
+        let frameIndex = 0;
+        const SAFE_BUFFER_LIMIT = 1024 * 1024; // 1MB
+        const NUM_CIRCLES = 30;
+        const circles = [];
+        // Initialize circles
+        for (let i = 0; i < NUM_CIRCLES; i++) {
+            circles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                r: Math.random() * 100 + 10,
+                color: `hsl(${Math.random() * 360},${Math.random() * 100}%,${Math.random() * 100}%)`,
+                vx: (Math.random() - 0.5) * 8, // velocity x
+                vy: (Math.random() - 0.5) * 8  // velocity y
+            });
+        }
+        let bgHue = 0;
+        let alphaPhase = 0;
+        setInterval(() => {
+            if (ws.bufferedAmount < SAFE_BUFFER_LIMIT) {
+                // Animate background color
+                bgHue = (bgHue + 1) % 360;
+                // Animate global alpha (fade in/out)
+                alphaPhase += 0.03; // speed of alpha change
+                const globalAlpha = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(alphaPhase)); // cycles between 0.3 and 1.0
+                ctx.globalAlpha = globalAlpha;
+                ctx.fillStyle = `hsl(${bgHue},100%,50%)`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                // Move and draw circles
+                for (let c of circles) {
+                    c.x += c.vx;
+                    c.y += c.vy;
+                    // Bounce off edges
+                    if (c.x - c.r < 0 || c.x + c.r > canvas.width) c.vx *= -1;
+                    if (c.y - c.r < 0 || c.y + c.r > canvas.height) c.vy *= -1;
+                    // Clamp position
+                    c.x = Math.max(c.r, Math.min(canvas.width - c.r, c.x));
+                    c.y = Math.max(c.r, Math.min(canvas.height - c.r, c.y));
+                    ctx.beginPath();
+                    ctx.arc(c.x, c.y, c.r, 0, 2 * Math.PI);
+                    ctx.fillStyle = c.color;
+                    ctx.fill();
+                }
+                ctx.fillStyle = "white";
+                ctx.font = "120px sans-serif";
+                ctx.fillText("Frame " + frameIndex, 50, 300);
+                ctx.globalAlpha = 1.0; // reset alpha for next frame
+                // grab pixels
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                ws.send(imageData.data.buffer);
+                frameIndex++;
+            } else {
+                console.warn("Frame dropped: WebSocket buffer full");
+            }
+        }, 1000 / 30);
+    };
+</script>
+</body>
+</html>
