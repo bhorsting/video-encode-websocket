@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<body>
+<canvas id="c" width="4096" height="2048" color-space="display-p3"></canvas>
+<script>
+    // Use HDR color space if supported
+    const canvas = document.getElementById("c");
+    // Try to get HDR context
+    let ctx = canvas.getContext("2d", { colorSpace: "display-p3" ,colorType:"float16"});
+    if (!ctx) ctx = canvas.getContext("2d"); // fallback
+    if (!ctx.getImageData) {
+        document.body.insertAdjacentHTML('afterbegin', '<div style="color:red;font-size:2em;">Warning: HDR canvas not supported in this browser!</div>');
+    }
+    const ws = new WebSocket("ws://localhost:8080");
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = () => {
+        console.log("Connected to server");
+
+        let frameIndex = 0;
+        const SAFE_BUFFER_LIMIT = 1024 * 1024 * 2; // 1MB
+        const NUM_CIRCLES = 30;
+        const circles = [];
+        for (let i = 0; i < NUM_CIRCLES; i++) {
+            let color;
+            if (i === 0) color = "color(rec2020 1 0 0)"; // pure red
+            else if (i === 1) color = "color(rec2020 0 1 0)"; // pure green
+            else if (i === 2) color = "color(rec2020 0 0 1)"; // pure blue
+            else color = "color(rec2020 1 1 1)"; // white
+            circles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                r: Math.random() * 100 + 10,
+                color,
+                vx: (Math.random() - 0.5) * 8,
+                vy: (Math.random() - 0.5) * 8
+            });
+        }
+        let bgHue = 0;
+        let alphaPhase = 0;
+        let lastFrameTime = 0;
+        let droppedFrames = 0;
+        const FRAME_INTERVAL = 1000 / 5; // Lowered to 5 fps for ffmpeg performance
+        async function sendFrame(now) {
+            if (!lastFrameTime || now - lastFrameTime >= FRAME_INTERVAL) {
+                if (ws.bufferedAmount < SAFE_BUFFER_LIMIT) {
+                    bgHue = (bgHue + 1) % 360;
+                    alphaPhase += 0.03;
+                    const globalAlpha = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(alphaPhase));
+                    ctx.globalAlpha = globalAlpha;
+                    ctx.fillStyle = `color(display-p3 ${Math.abs(Math.sin(bgHue/180*Math.PI))} 0.5 1)`;
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    // Dim HDR background
+                    ctx.globalAlpha = 1.0;
+                    ctx.fillStyle = `color(rec2020 0 0 0.15)`;
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    for (let c of circles) {
+                        c.x += c.vx;
+                        c.y += c.vy;
+                        if (c.x - c.r < 0 || c.x + c.r > canvas.width) c.vx *= -1;
+                        if (c.y - c.r < 0 || c.y + c.r > canvas.height) c.vy *= -1;
+                        c.x = Math.max(c.r, Math.min(canvas.width - c.r, c.x));
+                        c.y = Math.max(c.r, Math.min(canvas.height - c.r, c.y));
+                        ctx.beginPath();
+                        ctx.arc(c.x, c.y, c.r, 0, 2 * Math.PI);
+                        ctx.globalAlpha = 1.0;
+                        ctx.fillStyle = c.color;
+                        ctx.fill();
+                    }
+                    ctx.fillStyle = "white";
+                    ctx.font = "120px sans-serif";
+                    ctx.fillText("Frame " + frameIndex, 50, 300);
+                    ctx.globalAlpha = 1.0;
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height, {colorSpace:"display-p3",pixelFormat:"rgba-float16"});
+                    ws.send(imageData.data.buffer);
+                    frameIndex++;
+                    lastFrameTime = now;
+                } else {
+                    droppedFrames++;
+                    if (droppedFrames % 10 === 0) {
+                        console.warn(`Frame dropped: WebSocket buffer full (${droppedFrames} dropped)`);
+                    }
+                }
+            }
+            requestAnimationFrame(sendFrame);
+        }
+        requestAnimationFrame(sendFrame);
+    };
+</script>
+</body>
+</html>
