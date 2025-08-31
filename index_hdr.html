@@ -1,15 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <body>
-<canvas id="c" width="4096" height="2048" color-space="display-p3"></canvas>
+<canvas id="c" width="4096" height="2048"></canvas>
 <script>
-    // Use HDR color space if supported
+    // Use HDR color space if supported (note: 2D canvas does not support true HDR in browsers as of 2025)
     const canvas = document.getElementById("c");
-    // Try to get HDR context
-    let ctx = canvas.getContext("2d", { colorSpace: "display-p3" ,colorType:"float16"});
-    if (!ctx) ctx = canvas.getContext("2d"); // fallback
-    if (!ctx.getImageData) {
-        document.body.insertAdjacentHTML('afterbegin', '<div style="color:red;font-size:2em;">Warning: HDR canvas not supported in this browser!</div>');
+    let ctx = canvas.getContext("2d", { colorSpace: "rec2100-pq", pixelFormat: "float16", colorType: "float16", willReadFrequently: true });
+    if (!ctx) ctx = canvas.getContext("2d", { willReadFrequently: true }); // fallback
+    // Check for HDR support (this will always be false for 2D canvas)
+    if (!ctx.getImageData || !('colorSpace' in ctx)) {
+        document.body.insertAdjacentHTML('afterbegin', '<div style="color:red;font-size:2em;">Warning: True HDR canvas not supported in this browser. Images will be displayed in SDR.</div>');
+    } else {
+        document.body.insertAdjacentHTML('afterbegin', '<div style="color:green;font-size:1.5em;">HDR canvas context detected (experimental).</div>');
     }
     const ws = new WebSocket("ws://localhost:8080");
     ws.binaryType = "arraybuffer";
@@ -41,50 +43,95 @@
         let lastFrameTime = 0;
         let droppedFrames = 0;
         const FRAME_INTERVAL = 1000 / 5; // Lowered to 5 fps for ffmpeg performance
-        async function sendFrame(now) {
-            if (!lastFrameTime || now - lastFrameTime >= FRAME_INTERVAL) {
-                if (ws.bufferedAmount < SAFE_BUFFER_LIMIT) {
-                    bgHue = (bgHue + 1) % 360;
-                    alphaPhase += 0.03;
-                    const globalAlpha = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(alphaPhase));
-                    ctx.globalAlpha = globalAlpha;
-                    ctx.fillStyle = `color(display-p3 ${Math.abs(Math.sin(bgHue/180*Math.PI))} 0.5 1)`;
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    // Dim HDR background
-                    ctx.globalAlpha = 1.0;
-                    ctx.fillStyle = `color(rec2020 0 0 0.15)`;
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    for (let c of circles) {
-                        c.x += c.vx;
-                        c.y += c.vy;
-                        if (c.x - c.r < 0 || c.x + c.r > canvas.width) c.vx *= -1;
-                        if (c.y - c.r < 0 || c.y + c.r > canvas.height) c.vy *= -1;
-                        c.x = Math.max(c.r, Math.min(canvas.width - c.r, c.x));
-                        c.y = Math.max(c.r, Math.min(canvas.height - c.r, c.y));
-                        ctx.beginPath();
-                        ctx.arc(c.x, c.y, c.r, 0, 2 * Math.PI);
+        // --- Dynamically detect all AVIF and SVG images ---
+        const imageFiles = [
+            "hdr_cosmos01650_cicp9-16-9_yuv420_limited_qp10.avif",
+            "hdr1.svg",
+            "hdr2.svg",
+            "hdr3.svg"
+        ];
+        function loadImage(src) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve({img, src, success: true});
+                img.onerror = () => resolve({img: null, src, success: false});
+                img.src = src;
+            });
+        }
+        Promise.all(imageFiles.map(loadImage)).then(results => {
+            const loadedImages = results.filter(r => r.success).map(r => r.img);
+            const failedImages = results.filter(r => !r.success).map(r => r.src);
+            if (failedImages.length > 0) {
+                console.warn("Some images failed to load:", failedImages);
+                document.body.insertAdjacentHTML('afterbegin', `<div style='color:orange;font-size:1.5em;'>Warning: Some images failed to load:<br>${failedImages.join('<br>')}</div>`);
+            }
+            if (loadedImages.length === 0) {
+                document.body.insertAdjacentHTML('afterbegin', `<div style='color:red;font-size:2em;'>Error: No images could be loaded!</div>`);
+                return;
+            }
+            // Initial positions and velocities for images
+            const imageSprites = loadedImages.map((img, i) => ({
+                x: Math.random() * (canvas.width - 200) + 100,
+                y: Math.random() * (canvas.height - 200) + 100,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                w: 256,
+                h: 256
+            }));
+            async function sendFrame(now) {
+                if (!lastFrameTime || now - lastFrameTime >= FRAME_INTERVAL) {
+                    if (ws.bufferedAmount < SAFE_BUFFER_LIMIT) {
+                        bgHue = (bgHue + 1) % 360;
+                        alphaPhase += 0.03;
+                        ctx.globalAlpha = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(alphaPhase));
+                        ctx.fillStyle = `color(rec2020 ${Math.abs(Math.sin(bgHue/180*Math.PI))} 0.5 1)`;
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
                         ctx.globalAlpha = 1.0;
-                        ctx.fillStyle = c.color;
-                        ctx.fill();
-                    }
-                    ctx.fillStyle = "white";
-                    ctx.font = "120px sans-serif";
-                    ctx.fillText("Frame " + frameIndex, 50, 300);
-                    ctx.globalAlpha = 1.0;
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height, {colorSpace:"display-p3",pixelFormat:"rgba-float16"});
-                    ws.send(imageData.data.buffer);
-                    frameIndex++;
-                    lastFrameTime = now;
-                } else {
-                    droppedFrames++;
-                    if (droppedFrames % 10 === 0) {
-                        console.warn(`Frame dropped: WebSocket buffer full (${droppedFrames} dropped)`);
+                        ctx.fillStyle = `color(rec2020 0 0 0.15)`;
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        // --- Animate all successfully loaded images ---
+                        for (let i = 0; i < imageSprites.length; i++) {
+                            let sprite = imageSprites[i];
+                            sprite.x += sprite.vx;
+                            sprite.y += sprite.vy;
+                            if (sprite.x < 0 || sprite.x + sprite.w > canvas.width) sprite.vx *= -1;
+                            if (sprite.y < 0 || sprite.y + sprite.h > canvas.height) sprite.vy *= -1;
+                            sprite.x = Math.max(0, Math.min(canvas.width - sprite.w, sprite.x));
+                            sprite.y = Math.max(0, Math.min(canvas.height - sprite.h, sprite.y));
+                            ctx.drawImage(loadedImages[i], sprite.x, sprite.y, sprite.w, sprite.h);
+                        }
+                        for (let c of circles) {
+                            c.x += c.vx;
+                            c.y += c.vy;
+                            if (c.x - c.r < 0 || c.x + c.r > canvas.width) c.vx *= -1;
+                            if (c.y - c.r < 0 || c.y + c.r > canvas.height) c.vy *= -1;
+                            c.x = Math.max(c.r, Math.min(canvas.width - c.r, c.x));
+                            c.y = Math.max(c.r, Math.min(canvas.height - c.r, c.y));
+                            ctx.beginPath();
+                            ctx.arc(c.x, c.y, c.r, 0, 2 * Math.PI);
+                            ctx.globalAlpha = 1.0;
+                            ctx.fillStyle = c.color;
+                            ctx.fill();
+                        }
+                        ctx.fillStyle = "white";
+                        ctx.font = "120px sans-serif";
+                        ctx.fillText("Frame " + frameIndex, 50, 300);
+                        ctx.globalAlpha = 1.0;
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height, {colorSpace:"rec2020",pixelFormat:"rgba-float16"});
+                        ws.send(imageData.data.buffer);
+                        frameIndex++;
+                        lastFrameTime = now;
+                    } else {
+                        droppedFrames++;
+                        if (droppedFrames % 10 === 0) {
+                            console.warn(`Frame dropped: WebSocket buffer full (${droppedFrames} dropped)`);
+                        }
                     }
                 }
+                requestAnimationFrame(sendFrame);
             }
             requestAnimationFrame(sendFrame);
-        }
-        requestAnimationFrame(sendFrame);
+        });
     };
 </script>
 </body>
