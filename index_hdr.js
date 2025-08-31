@@ -14,16 +14,20 @@ const ffmpeg = spawn("ffmpeg", [
     "-pix_fmt", PIX_FMT, // matches client pixel format
     "-s:v", "4096x2048", // must match canvas size
     "-r", "30",        // must match send rate
+    // Input color metadata for rec2100-pq
+    "-colorspace", "9",         // BT.2020nc
+    "-color_primaries", "9",    // BT.2020
+    "-color_trc", "16",         // SMPTE2084 (PQ)
     "-i", "-",         // stdin
     // Convert float16 RGBA to ProRes HDR
     "-vf", "format=yuva444p10le",
     // ProRes HDR encoding
     "-c:v", "prores_ks",
     "-profile:v", "4", // 4444 XQ (highest quality, supports alpha)
-    // HDR metadata
-    "-color_primaries", "9", // BT.2020
-    "-color_trc", "16", // SMPTE2084 (PQ)
-    "-colorspace", "9", // BT.2020nc
+    // Output color metadata for rec2100-pq
+    "-colorspace", "9",
+    "-color_primaries", "9",
+    "-color_trc", "16",
     "output_hdr.mov"
 ]);
 

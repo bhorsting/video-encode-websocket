@@ -25,8 +25,8 @@
         const circles = [];
         for (let i = 0; i < NUM_CIRCLES; i++) {
             let color;
-            if (i === 0) color = "color(rec2020 1 0 0)"; // pure red
-            else if (i === 1) color = "color(rec2020 0 1 0)"; // pure green
+            if (i === 0) color = "color(rec2100-pq 1 0 0)"; // pure red
+            else if (i === 1) color = "color(rec2100-pq 0 1 0)"; // pure green
             else if (i === 2) color = "color(rec2020 0 0 1)"; // pure blue
             else color = "color(rec2020 1 1 1)"; // white
             circles.push({
@@ -75,8 +75,8 @@
                 y: Math.random() * (canvas.height - 200) + 100,
                 vx: (Math.random() - 0.5) * 10,
                 vy: (Math.random() - 0.5) * 10,
-                w: 256,
-                h: 256
+                w: 600,
+                h: 400
             }));
             async function sendFrame(now) {
                 if (!lastFrameTime || now - lastFrameTime >= FRAME_INTERVAL) {
@@ -117,7 +117,7 @@
                         ctx.font = "120px sans-serif";
                         ctx.fillText("Frame " + frameIndex, 50, 300);
                         ctx.globalAlpha = 1.0;
-                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height, {colorSpace:"rec2020",pixelFormat:"rgba-float16"});
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height, {colorSpace:"rec2100-pq",pixelFormat:"rgba-float16"});
                         ws.send(imageData.data.buffer);
                         frameIndex++;
                         lastFrameTime = now;
