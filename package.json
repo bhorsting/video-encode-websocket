@@ -4,12 +4,16 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "start_hdr": "node index_hdr.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "express": "^5.1.0",
+    "mime-types": "^3.0.1",
+    "puppeteer": "^24.17.1",
     "ws": "^8.18.3"
   }
 }

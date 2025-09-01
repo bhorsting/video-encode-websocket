@@ -8,11 +8,6 @@
     let ctx = canvas.getContext("2d", { colorSpace: "rec2100-pq", pixelFormat: "float16", colorType: "float16", willReadFrequently: true });
     if (!ctx) ctx = canvas.getContext("2d", { willReadFrequently: true }); // fallback
     // Check for HDR support (this will always be false for 2D canvas)
-    if (!ctx.getImageData || !('colorSpace' in ctx)) {
-        document.body.insertAdjacentHTML('afterbegin', '<div style="color:red;font-size:2em;">Warning: True HDR canvas not supported in this browser. Images will be displayed in SDR.</div>');
-    } else {
-        document.body.insertAdjacentHTML('afterbegin', '<div style="color:green;font-size:1.5em;">HDR canvas context detected (experimental).</div>');
-    }
     const ws = new WebSocket("ws://localhost:8080");
     ws.binaryType = "arraybuffer";
 
@@ -27,8 +22,8 @@
             let color;
             if (i === 0) color = "color(rec2100-pq 1 0 0)"; // pure red
             else if (i === 1) color = "color(rec2100-pq 0 1 0)"; // pure green
-            else if (i === 2) color = "color(rec2020 0 0 1)"; // pure blue
-            else color = "color(rec2020 1 1 1)"; // white
+            else if (i === 2) color = "color(rec2100-pq 0 0 1)"; // pure blue
+            else color = "color(rec2100-pq 1 1 1)"; // white
             circles.push({
                 x: Math.random() * canvas.width,
                 y: Math.random() * canvas.height,
@@ -45,10 +40,10 @@
         const FRAME_INTERVAL = 1000 / 5; // Lowered to 5 fps for ffmpeg performance
         // --- Dynamically detect all AVIF and SVG images ---
         const imageFiles = [
-            "hdr_cosmos01650_cicp9-16-9_yuv420_limited_qp10.avif",
-            "hdr1.svg",
-            "hdr2.svg",
-            "hdr3.svg"
+            "/images/hdr_cosmos01650_cicp9-16-9_yuv420_limited_qp10.avif",
+            "/images/hdr1.svg",
+            "/images/hdr2.svg",
+            "/images/hdr3.svg"
         ];
         function loadImage(src) {
             return new Promise((resolve) => {
@@ -84,10 +79,10 @@
                         bgHue = (bgHue + 1) % 360;
                         alphaPhase += 0.03;
                         ctx.globalAlpha = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(alphaPhase));
-                        ctx.fillStyle = `color(rec2020 ${Math.abs(Math.sin(bgHue/180*Math.PI))} 0.5 1)`;
+                        ctx.fillStyle = `color(rec2100-pq ${Math.abs(Math.sin(bgHue/180*Math.PI))} 0.5 1)`;
                         ctx.fillRect(0, 0, canvas.width, canvas.height);
                         ctx.globalAlpha = 1.0;
-                        ctx.fillStyle = `color(rec2020 0 0 0.15)`;
+                        ctx.fillStyle = `color(rec2100-pq 0 0 0.15)`;
                         ctx.fillRect(0, 0, canvas.width, canvas.height);
                         // --- Animate all successfully loaded images ---
                         for (let i = 0; i < imageSprites.length; i++) {

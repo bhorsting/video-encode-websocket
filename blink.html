@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HDR Blink Demo</title>
+    <style>
+        body {
+            margin: 0;
+            background: black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        canvas {
+            width: 80vw;
+            height: 80vh;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+<canvas id="c" width="800" height="400"></canvas>
+<script>
+    const canvas = document.getElementById("c");
+    const ctx = canvas.getContext("2d", { colorSpace: "rec2100-pq", pixelFormat: "float16", colorType: "float16", willReadFrequently: true });
+
+    ctx.font = "bold 150px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    let on = false;
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Switch between SDR white and HDR white
+        ctx.fillStyle = on ? "color(rec2100-pq 1 1 1)" : "rgb(255,255,255)";
+        ctx.fillText("HDR", canvas.width / 2, canvas.height / 2);
+
+        on = !on;
+    }
+
+    setInterval(draw, 800); // blink every 800 ms
+</script>
+</body>
+</html>
